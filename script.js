@@ -1,0 +1,987 @@
+(function(){
+  const grid = document.getElementById('grid');
+  const weaponNameEl = document.getElementById('weaponName');
+  const previewImg = document.getElementById('previewImg');
+  const basePriceEl = document.getElementById('basePrice');
+  const multiplierEl = document.getElementById('multiplier');
+  const resultPriceEl = document.getElementById('resultPrice');
+  const conditionsRoot = document.getElementById('conditions');
+  const stattrakCheckbox = document.getElementById('stattrakCheckbox');
+  const caseSelect = document.getElementById('caseSelect');
+  const thumbGamma = document.getElementById('thumbGamma');
+  const thumbRevolver = document.getElementById('thumbRevolver');
+  const thumbTop5 = document.getElementById('thumbTop5');
+  const caseTitleEl = document.getElementById('caseTitle');
+  const sortSelect = document.getElementById('sortSelect');
+  const blueGemSection = document.getElementById('blueGemSection');
+  const blueGemRange = document.getElementById('blueGemRange');
+  const blueGemValue = document.getElementById('blueGemValue');
+  const blueGemEnable = document.getElementById('blueGemEnable');
+  const emeraldSection = document.getElementById('emeraldSection');
+  const emeraldEnable = document.getElementById('emeraldEnable');
+  const addToBankBtn = document.getElementById('addToBankBtn');
+  if(blueGemRange && blueGemValue){
+ 
+    const mappedInitial = typeof mapBlueGemSlider === 'function' ? mapBlueGemSlider(Number(blueGemRange.value)) : Number(blueGemRange.value);
+    blueGemValue.textContent = (Number.isFinite(mappedInitial) ? mappedInitial.toFixed(2) : String(mappedInitial)) + '×';
+  }
+  if(blueGemEnable){ blueGemEnable.checked = false; }
+  if(emeraldEnable){ emeraldEnable.checked = false; }
+
+  if(blueGemRange) blueGemRange.disabled = true;
+  if(blueGemSection) blueGemSection.classList.add('disabled');
+
+  const CONDITION_MULT = { BS:1.0, WW:1.3, FT:2.0, MW:2.6, FN:3.3 };
+  const STATTRAK_MULT = 2.5;
+
+
+  let _audioCtx = null;
+  function ensureAudio(){
+    if(_audioCtx) return _audioCtx;
+    try{
+      const C = window.AudioContext || window.webkitAudioContext;
+      _audioCtx = new C();
+    }catch(e){ _audioCtx = null; }
+    return _audioCtx;
+  }
+
+  function playSoftClick(){
+    const ctx = ensureAudio();
+    if(!ctx) return;
+    try{
+      if(ctx.state === 'suspended') ctx.resume();
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      
+      osc.frequency.value = 600;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(0.006, now + 0.006); 
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.07); 
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.08);
+    }catch(e){}
+  }
+
+ 
+  document.addEventListener('click', (ev)=>{
+    try{
+      if(typeof ev.button === 'number' && ev.button !== 0) return;
+      playSoftClick();
+    }catch(e){ }
+  }, {passive:true});
+
+  let framesData = new Array(30).fill(null).map(()=>({ name:null, img:null, basePrice:null, condition:null, stattrak:false, lastFinal:null }));
+  let activeFrameIndex = null;
+  let selectedCondition = null;
+  let currentBoxName = 'Gamma 2 Case';
+  const boxes = {};
+
+  function formatPriceUSD(v){
+    if(v===null||v===undefined) return '—';
+    const n = Number(v);
+    if(Number.isNaN(n)) return '—';
+    
+    const parts = n.toFixed(2).split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    return '$' + parts.join('.');
+  }
+
+  function renderGrid(count=30){ if(!grid) return; grid.innerHTML=''; for(let i=0;i<count;i++){ const frame=document.createElement('div'); frame.className='frame'; frame.dataset.index=i; const thumb=document.createElement('div'); thumb.className='thumb'; thumb.textContent='Cadre '+(i+1); const ov=document.createElement('div'); ov.className='price-overlay'; ov.textContent=''; frame.appendChild(thumb); frame.appendChild(ov); frame.addEventListener('click', ()=> onFrameClick(i, frame)); grid.appendChild(frame); } }
+
+  function onFrameClick(i, el){
+  document.querySelectorAll('.frame').forEach(f=>f.classList.remove('active'));
+  el.classList.add('active');
+  activeFrameIndex = i;
+  const fd = framesData[i] || {};
+  selectedCondition = fd.condition || null;
+  if(stattrakCheckbox) stattrakCheckbox.checked = !!fd.stattrak;
+
+  // update condition buttons visual state without rebinding events
+  if(conditionsRoot){
+    const buttons = Array.from(conditionsRoot.querySelectorAll('.cond-btn'));
+    buttons.forEach(btn => btn.classList.toggle('active', btn.textContent === selectedCondition));
+  }
+
+  updatePreview();
+ }
+
+  function setFrameData(i, { name=null, img=null, basePrice=null, condition=null, stattrak=false }={}){
+  if(i<0||i>=framesData.length) return;
+  framesData[i].name = name;
+  framesData[i].img = img;
+  framesData[i].basePrice = basePrice;
+  if(condition!==undefined && condition!==null) framesData[i].condition = condition;
+ 	framesData[i].stattrak = !!stattrak;
+
+ 	const frame = document.querySelector(`.frame[data-index="${i}"]`);
+ 	if(!frame) return;
+
+ 	const thumb = frame.querySelector('.thumb');
+ 	thumb.textContent = '';
+
+ 	
+ 	if(img){
+ 		const exts = ['png','jpg','webp'];
+ 		let attached = false;
+ 		for(const ext of exts){
+ 			const im = new Image();
+ 			im.src = `${img}.${ext}`;
+ 			im.alt = name||'';
+ 			im.onload = ()=>{ if(!attached){ thumb.textContent = ''; im.className = 'frame-img'; thumb.appendChild(im); attached = true; } };
+ 		}
+ 		setTimeout(()=>{ if(!thumb.querySelector('img')) thumb.textContent = name||''; },600);
+ 	} else {
+ 		thumb.textContent = name||'';
+ 	}
+
+ 
+ 	const ov = frame.querySelector('.price-overlay');
+ 	if(ov) ov.textContent = (basePrice!=null)?formatPriceUSD(basePrice):'';
+
+ 
+  let mb = frame.querySelector('.money-badge');
+  if(!mb){ mb = document.createElement('div'); mb.className = 'money-badge'; frame.appendChild(mb); }
+  mb.textContent = (basePrice!=null)?formatPriceUSD(basePrice):'';
+
+ 
+  const eb = frame.querySelector('.emerald-badge'); if(eb) eb.remove();
+
+ 	
+ 	let titleOv = frame.querySelector('.title-overlay');
+ 	if(!titleOv){ titleOv = document.createElement('div'); titleOv.className = 'title-overlay'; frame.appendChild(titleOv); }
+ 	titleOv.textContent = name||'';
+  }
+
+  function setPreviewImage(imgBase, name){ if(!previewImg) return; previewImg.textContent=''; if(!imgBase){ previewImg.textContent = name||'Aperçu'; return; } const exts=['png','jpg','webp']; let attached=false; for(const ext of exts){ const im=new Image(); im.src=`${imgBase}.${ext}`; im.alt=name||''; im.onload=()=>{ if(!attached){ previewImg.textContent=''; im.className='preview-img-el'; previewImg.appendChild(im); attached=true; } }; } setTimeout(()=>{ if(!previewImg.querySelector('img')) previewImg.textContent = name||'Aperçu'; },600); }
+
+  function computeMultiplier(){ let m=1.0; if(selectedCondition && CONDITION_MULT[selectedCondition]) m=CONDITION_MULT[selectedCondition]; if(stattrakCheckbox && stattrakCheckbox.checked) m *= STATTRAK_MULT; return m; }
+  function computeMultiplierForFrame(i){ const fd = framesData[i] || {}; const cond = fd.condition || selectedCondition; let m=1.0; if(cond && CONDITION_MULT[cond]) m=CONDITION_MULT[cond]; if(fd.stattrak) m *= STATTRAK_MULT; return m; }
+
+ 
+  function isEmeraldGamma(i){
+    if(!framesData[i]) return false;
+    if(currentBoxName !== 'Gamma 2 Case') return false;
+    const fd = framesData[i];
+    const name = String(fd.name||'').toLowerCase();
+    const img = String(fd.img||'').toLowerCase();
+   
+    return name.includes('gamma doppler') || img.includes('gamma_doppler');
+  }
+
+ 
+  function computeExtendedMultiplierForFrame(i){ const baseMul = computeMultiplierForFrame(i); const fd = framesData[i] || {}; let ext = 1.0; if(currentBoxName === 'Revolver Case'){
+   
+    const gemMul = (blueGemEnable && !blueGemEnable.checked) ? 1.0 : (blueGemRange ? mapBlueGemSlider(parseFloat(blueGemRange.value)) : 28.5);
+    const name = String(fd.name||'').toLowerCase();
+    const img = String(fd.img||'').toLowerCase();
+    if(name.includes('case hardened') || img.includes('case_hardened')){
+      ext = gemMul;
+    }
+  }
+
+  if(isEmeraldGamma(i) && emeraldEnable && emeraldEnable.checked){
+    ext = ext * 8.0; 
+  }
+  return baseMul * ext;
+  }
+
+
+  function mapBlueGemSlider(norm){
+    const n = Math.max(0, Math.min(1000, Number(norm || 0)));
+    const EASE = 2.5;
+    const lowMax = 749;
+    const highMax = 1000;
+   
+    if(n <= lowMax){
+      const t = Math.pow(n / lowMax, EASE);
+      return 28.5 + t * (200 - 28.5);
+    }
+ 
+    const t = Math.pow((n - lowMax) / (highMax - lowMax), EASE);
+    return 200 + t * (5120.24 - 200);
+  }
+
+  
+  function isBlueGemApplicable(i){ if(!framesData[i]) return false; if(currentBoxName !== 'Revolver Case') return false; const fd = framesData[i]; const name = String(fd.name||'').toLowerCase(); const img = String(fd.img||'').toLowerCase(); return name.includes('case hardened') || img.includes('case_hardened'); }
+
+  function updateFrameOverlay(i){ const fd=framesData[i]; const frame=document.querySelector(`.frame[data-index="${i}"]`); if(!frame) return; const ov=frame.querySelector('.price-overlay'); ov.textContent = (fd && fd.basePrice!=null)?formatPriceUSD(fd.basePrice):''; }
+
+  function animateNumber(from,to,duration,onUpdate,onComplete){ const start=performance.now(); const diff=to-from; function step(now){ const t=Math.min(1,(now-start)/duration); const v=from+diff*t; onUpdate(v); if(t<1) requestAnimationFrame(step); else if(onComplete) onComplete(); } requestAnimationFrame(step); }
+
+  function updatePreview(){
+    let base = 0;
+    if(activeFrameIndex!==null && framesData[activeFrameIndex] && framesData[activeFrameIndex].basePrice!=null) base = framesData[activeFrameIndex].basePrice;
+    if(basePriceEl) basePriceEl.textContent = formatPriceUSD(base);
+    const mul = (activeFrameIndex!==null) ? computeExtendedMultiplierForFrame(activeFrameIndex) : computeMultiplier();
+    if(multiplierEl) multiplierEl.textContent = mul.toFixed(2);
+    const result = (base||0)*mul;
+    if(resultPriceEl) resultPriceEl.textContent = formatPriceUSD(result);
+    const name = (activeFrameIndex!==null && framesData[activeFrameIndex] && framesData[activeFrameIndex].name) || 'Aucune arme sélectionnée';
+    if(weaponNameEl) weaponNameEl.textContent = name;
+    const previewBase = (activeFrameIndex!==null && framesData[activeFrameIndex] && framesData[activeFrameIndex].img) ? framesData[activeFrameIndex].img : null;
+    setPreviewImage(previewBase, name);
+
+    if(emeraldSection){
+      const showE = (activeFrameIndex!==null) && isEmeraldGamma(activeFrameIndex);
+      emeraldSection.style.display = showE ? 'block' : 'none';
+    }
+    if(activeFrameIndex!==null) updateFrameOverlay(activeFrameIndex);
+    updateFinalLarge();
+
+    if(blueGemSection){
+      const show = (activeFrameIndex!==null) && isBlueGemApplicable(activeFrameIndex);
+      blueGemSection.style.display = show ? 'block' : 'none';
+      if(blueGemValue) blueGemValue.style.opacity = (show && blueGemEnable && blueGemEnable.checked) ? '1' : '0.5';
+    }
+
+    // refresh add-to-bank button state
+    if(typeof refreshAddButtonState === 'function') refreshAddButtonState();
+  }
+
+
+  function updateFinalLarge(){
+  const el = document.getElementById('finalLargeValue');
+  if(!el) return;
+  if(activeFrameIndex===null){
+    el.textContent = '—';
+    window._lastDisplayedFinal = null;
+    return;
+  }
+
+  const fd = framesData[activeFrameIndex];
+  const base = (fd && fd.basePrice!=null) ? fd.basePrice : 0;
+  const mul = computeExtendedMultiplierForFrame(activeFrameIndex);
+  const finalP = (base || 0) * mul;
+
+  // previous displayed value (global across selections) fallback to frame.lastFinal
+  const prevDisplayed = (typeof window._lastDisplayedFinal === 'number')
+    ? window._lastDisplayedFinal
+    : ((fd && typeof fd.lastFinal === 'number') ? fd.lastFinal : null);
+
+  if(prevDisplayed === null){
+    el.textContent = formatPriceUSD(finalP);
+    const small = document.getElementById('resultPrice');
+    if(small) small.textContent = formatPriceUSD(finalP);
+  } else {
+    animateNumber(prevDisplayed, finalP, 400, (v)=>{
+      el.textContent = formatPriceUSD(v);
+      const small = document.getElementById('resultPrice');
+      if(small) small.textContent = formatPriceUSD(v);
+    });
+  }
+
+  // visual feedback (green / red) based on change compared to previous displayed value
+  const small = document.getElementById('resultPrice');
+  if(prevDisplayed !== null){
+    if(finalP > prevDisplayed){
+      el.classList.add('price-up'); el.classList.remove('price-down');
+      if(small){ small.classList.add('price-up'); small.classList.remove('price-down'); }
+      setTimeout(()=>{ el.classList.remove('price-up'); if(small) small.classList.remove('price-up'); },700);
+    } else if(finalP < prevDisplayed){
+      el.classList.add('price-down'); el.classList.remove('price-up');
+      if(small){ small.classList.add('price-down'); small.classList.remove('price-up'); }
+      setTimeout(()=>{ el.classList.remove('price-down'); if(small) small.classList.remove('price-down'); },700);
+    }
+  }
+
+  if(fd) fd.lastFinal = finalP;
+  window._lastDisplayedFinal = finalP;
+}
+
+  const CONDITIONS = ['BS','WW','FT','MW','FN'];
+  function renderConditions(){ if(!conditionsRoot) return; conditionsRoot.innerHTML=''; CONDITIONS.forEach(c=>{ const b=document.createElement('button'); b.className='cond-btn'; b.textContent=c; b.addEventListener('click', ()=>{ if(selectedCondition===c) selectedCondition=null; else selectedCondition=c; if(activeFrameIndex!==null) framesData[activeFrameIndex].condition = selectedCondition; updatePreview(); }); conditionsRoot.appendChild(b); }); }
+
+  function renderConditions(){
+    if(!conditionsRoot) return;
+    conditionsRoot.innerHTML = '';
+    CONDITIONS.forEach(c=>{
+      const b = document.createElement('button');
+      b.className = 'cond-btn';
+      b.textContent = c;
+      b.addEventListener('click', ()=>{
+        if(selectedCondition === c) {
+          selectedCondition = null;
+        } else {
+          selectedCondition = c;
+        }
+       
+        conditionsRoot.querySelectorAll('.cond-btn').forEach(btn=>btn.classList.remove('active'));
+        if(selectedCondition) {
+          const activeBtn = Array.from(conditionsRoot.querySelectorAll('.cond-btn')).find(x=>x.textContent===selectedCondition);
+          if(activeBtn) activeBtn.classList.add('active');
+        }
+        if(activeFrameIndex!==null) framesData[activeFrameIndex].condition = selectedCondition;
+        updatePreview();
+      });
+      conditionsRoot.appendChild(b);
+    });
+  }
+
+  if(stattrakCheckbox) stattrakCheckbox.addEventListener('change', ()=>{ const val = stattrakCheckbox.checked; if(activeFrameIndex!==null){ framesData[activeFrameIndex].stattrak = val; updateFrameOverlay(activeFrameIndex); } updateFinalLarge(); });
+
+  function prefillGamma2(){ renderGrid(30); const pre=[
+	['BAYONET | Gamma Doppler','bayonet_gamma_doppler',491.46],['BAYONET | Autotronic','bayonet_autotronic',431.25],['BAYONET | Black Laminate','bayonet_black_laminate',300.42],['BAYONET | Bright Water','bayonet_bright_water',146.70],['BAYONET | Freehand','bayonet_freehand',430.00],['BAYONET | Lore','bayonet_lore',339.43],['FLIPKNIFE | Autotronic','flipknife_autotronic',252.90],['FLIPKNIFE | Black Laminate','flipknife_black_laminate',187.50],['FLIPKNIFE | Bright Water','flipknife_bright_water',105.70],['FLIPKNIFE | Freehand','flipknife_freehand',105.46],['FLIPKNIFE | Gamma Doppler','flipknife_gamma_doppler',504.50],['FLIPKNIFE | Lore','flipknife_lore',233.01],['GUTKNIFE | Autotronic','gutknife_autotronic',132.97],['GUTKNIFE | Black Laminate','gutknife_black_laminate',85.48],['GUTKNIFE | Bright Water','gutknife_bright_water',61.22],['GUTKNIFE | Freehand','gutknife_freehand',80.88],['GUTKNIFE | Gamma Doppler','gutknife_gamma_doppler',226.00],['GUTKNIFE | Lore','gutknife_lore',116.65],['KARAMBIT | Autotronic','karambit_autotronic',210.10],['KARAMBIT | Black Laminate','karambit_black_laminate',632.49],['KARAMBIT | Bright Water','karambit_bright_water',520.19],['KARAMBIT | Freehand','karambit_freehand',618.41],['KARAMBIT | Gamma Doppler','karambit_gamma_doppler',360.40],['KARAMBIT | Lore','karambit_lore',516.90],['M9 BAYONET | Autotronic','M9bayonet_autotronic',631.01],['M9 BAYONET | Black Laminate','M9bayonet_black_laminate',511.93],['M9 BAYONET | Bright Water','M9bayonet_bright_water',480.17],['M9 BAYONET | Freehand','M9bayonet_freehand',416.22],['M9 BAYONET | Gamma Doppler','M9bayonet_gamma_doppler',210.93],['M9 BAYONET | Lore','M9bayonet_lore',475.97]
+  ]; for(let i=0;i<pre.length;i++){ const [n,img,p]=pre[i]; setFrameData(i,{ name:n, img:img, basePrice:p, condition:'BS' }); } boxes['Gamma 2 Case'] = framesData.map(f=>({ ...f })); }
+
+  function buildRevolver(){
+    const revolverList = [
+      ['bayonet_blue_steel',183.34],
+      ['bayonet_boreal_forest',269.33],
+      ['bayonet_case_hardened',303.42],
+      ['bayonet_classic',220.21],
+      ['bayonet_crimson_web',246.43],
+      ['bayonet_fade',351.37],
+      ['bayonet_forest_DDPAT',111.17],
+      ['bayonet_night',335.74],
+      ['bayonet_safari_mesh',150.6],
+      ['bayonet_scorched',122.33],
+      ['bayonet_slaughter',283.17],
+      ['bayonet_stained',207.41],
+      ['bayonet_urban_masked',138.76],
+
+      ['flipknife_blue_steel',132.56],
+      ['flipknife_boreal_forest',119.98],
+      ['flipknife_case_hardened',182.13],
+      ['flipknife_classic',175.03],
+      ['flipknife_crimson_web',221.63],
+      ['flipknife_fade',285.85],
+      ['flipknife_forest_DDPAT',105.36],
+      ['flipknife_night',278.22],
+      ['flipknife_safari_mesh',106.75],
+      ['flipknife_scorched',120.74],
+      ['flipknife_slaughter',216.19],
+      ['flipknife_stained',154.79],
+      ['flipknife_urban_masked',102.60],
+
+      ['gutknife_blue_steel',85.4],
+      ['gutknife_boreal_forest',61.44],
+      ['gutknife_case_hardened',78.06],
+      ['gutknife_classic',54.1],
+      ['gutknife_crimson_web',78.39],
+      ['gutknife_fade',126.91],
+      ['gutknife_forest_DDPAT',84.01],
+      ['gutknife_night',210.80],
+      ['gutknife_safari_mesh',147.09],
+      ['gutknife_scorched',76.14],
+      ['gutknife_slaughter',91.21],
+      ['gutknife_stained',102.46],
+      ['gutknife_urban_masked',69.11],
+
+      ['karambit_blue_steel',624.19],
+      ['karambit_boreal_forest',540.72],
+      ['karambit_case_hardened',606.26],
+      ['karambit_classic',300.37],
+      ['karambit_crimson_web',519.04],
+      ['karambit_fade',405.47],
+      ['karambit_forest_DDPAT',419.38],
+      ['karambit_night',420.05],
+      ['karambit_safari_mesh',473.17],
+      ['karambit_scorched',464.2],
+      ['karambit_slaughter',345.76],
+      ['karambit_stained',627.17],
+      ['karambit_urban_masked',472.13],
+
+      ['M9bayonet_blue_steel',540.47],
+      ['M9bayonet_boreal_forest',322.18],
+      ['M9bayonet_case_hardened',390.22],
+      ['M9bayonet_classic',210.26],
+      ['M9bayonet_crimson_web',387.18],
+      ['M9bayonet_fade',300.68],
+      ['M9bayonet_forest_DDPAT',323.18],
+      ['M9bayonet_night',387.99],
+      ['M9bayonet_safari_mesh',334.63],
+      ['M9bayonet_scorched',371.24],
+      ['M9bayonet_slaughter',608.06],
+      ['M9bayonet_stained',506.68],
+      ['M9bayonet_urban_masked',299.05]
+    ];
+
+    
+    const seen = new Set();
+    const unique = [];
+    for (const [img, price] of revolverList) {
+      if (!seen.has(img)) {
+        seen.add(img);
+        unique.push([img, price]);
+      }
+    }
+
+    
+    framesData = new Array(unique.length).fill(null).map(()=>({ name:null, img:null, basePrice:null, condition:null, stattrak:false, lastFinal:null }));
+
+    boxes['Revolver Case'] = unique.map(([img,price])=>({
+      name: img.replace(/_/g,' ').replace(/\b([a-z])/g, (m)=>m.toUpperCase()),
+      img,
+      basePrice: price,
+      condition: null,
+      stattrak: false,
+      lastFinal: null
+    }));
+  }
+
+ 
+  function buildTop5(){
+   
+    framesData = new Array(5).fill(null).map(()=>({ name:null, img:null, basePrice:null, condition:null, stattrak:false, lastFinal:null }));
+    boxes['Top 5'] = framesData.map((f,idx)=>({ ...f }));
+  }
+
+  function createTop5Adder(){
+    // create a small UI in the sidebar for adding an item to Top 5 (only visible when Top 5 active)
+    const wrapper = document.querySelector('.conditions-wrapper');
+    if(!wrapper) return;
+
+    let adder = document.getElementById('top5-adder');
+    if(adder) return; // already created
+
+    adder = document.createElement('div');
+    adder.id = 'top5-adder';
+    adder.style.marginTop = '12px';
+    adder.style.display = 'none';
+    adder.innerHTML = `
+      <div style="color:#bbb;margin-bottom:8px;font-weight:700;">Ajouter un item (Top 5)</div>
+      <input id="top5Image" placeholder="image de base (ex: myknife_file_without_ext)" style="width:100%;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:rgba(0,0,0,0.4);color:#fff;margin-bottom:6px;" />
+      <input id="top5Name" placeholder="Nom affiché (ex: BAYONET | Custom)" style="width:100%;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:rgba(0,0,0,0.4);color:#fff;margin-bottom:6px;" />
+      <input id="top5Price" placeholder="Prix de base (ex: 123.45)" type="number" step="0.01" style="width:100%;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:rgba(0,0,0,0.4);color:#fff;margin-bottom:8px;" />
+      <div style="display:flex;gap:8px;">
+        <button id="top5AddBtn" style="flex:1;padding:8px;border-radius:6px;border:0;background:#2ecc71;color:#072;font-weight:800;cursor:pointer;">Ajouter</button>
+        <button id="top5ClearBtn" style="padding:8px;border-radius:6px;border:0;background:#e74c3c;color:#fff;font-weight:700;cursor:pointer;">Effacer</button>
+      </div>
+    `;
+    wrapper.appendChild(adder);
+
+    const imgIn = document.getElementById('top5Image');
+    const nameIn = document.getElementById('top5Name');
+    const priceIn = document.getElementById('top5Price');
+    const addBtn = document.getElementById('top5AddBtn');
+    const clearBtn = document.getElementById('top5ClearBtn');
+
+    addBtn.addEventListener('click', ()=>{
+      // only allow when Top 5 is active
+      if(currentBoxName !== 'Top 5') { alert('L\'ajout est uniquement disponible dans la catégorie Top 5.'); return; }
+      const imgBase = String(imgIn.value || '').trim();
+      const name = String(nameIn.value || '').trim() || (imgBase ? imgBase.replace(/[_\-]+/g,' ') : 'Custom Item');
+      const price = parseFloat(priceIn.value || '0') || 0;
+      // find first empty slot or replace selected
+      let idx = framesData.findIndex(f => !f || (!f.img && !f.name && (f.basePrice==null || f.basePrice===0)));
+      if(idx === -1) idx = 0; // fallback to slot 0
+      // set data
+      setFrameData(idx, { name, img: imgBase || null, basePrice: price, condition: 'BS', stattrak: false });
+      // persist into boxes
+      boxes['Top 5'] = framesData.map(f=>({ ...f }));
+      // mark this frame active so add-to-bank uses it without failing
+      const frameEl = document.querySelector(`.frame[data-index="${idx}"]`);
+      document.querySelectorAll('.frame').forEach(f=>f.classList.remove('active'));
+      if(frameEl) frameEl.classList.add('active');
+      activeFrameIndex = idx;
+      updatePreview();
+    });
+
+    clearBtn.addEventListener('click', ()=>{
+      imgIn.value = ''; nameIn.value = ''; priceIn.value = '';
+    });
+  }
+
+function resolveImgWithFallback(base, imgEl){
+    // attempt png, jpg, webp in order when rendering bank slot / frame images
+    const exts = ['png','jpg','webp'];
+    let i = 0;
+    function tryNext(){
+      if(i >= exts.length){
+        imgEl.alt = base || '';
+        return;
+      }
+      const src = `${base}.${exts[i++]}`;
+      imgEl.src = src;
+      // onerror try next
+      imgEl.onerror = tryNext;
+    }
+    tryNext();
+  }
+
+function renderBankSlots(){
+  if(!bankSlotsRoot) return;
+  bankSlotsRoot.innerHTML = '';
+  for(let i=0;i<bankSlots.length;i++){
+    const s = bankSlots[i];
+    const slot = document.createElement('div');
+    slot.className = 'bank-slot' + (s ? '' : ' empty');
+    slot.dataset.slot = i;
+
+    if(s){
+      const im = new Image();
+      im.className = 'slot-img';
+      if(s.img){
+        // try multiple extensions
+        resolveImgWithFallback(s.img, im);
+      } else {
+        im.src = '';
+      }
+      slot.appendChild(im);
+
+      const meta = document.createElement('div');
+      meta.className = 'slot-meta';
+      meta.textContent = s.name || '';
+      slot.appendChild(meta);
+
+      const priceEl = document.createElement('div');
+      priceEl.className = 'slot-meta';
+      priceEl.style.right = '10px';
+      priceEl.style.left = 'auto';
+      priceEl.textContent = formatPriceUSD(s.bankFinal != null ? s.bankFinal : s.basePrice);
+      slot.appendChild(priceEl);
+
+      const rem = document.createElement('button');
+      rem.className = 'slot-remove';
+      rem.textContent = '✕';
+      rem.addEventListener('click', (ev)=>{ ev.stopPropagation(); bankSlots[i] = null; renderBankSlots(); updateBankStats(); });
+      slot.appendChild(rem);
+
+      const remB = document.createElement('button');
+      remB.className = 'slot-remove-bottom';
+      remB.textContent = '−';
+      remB.title = 'Retirer';
+      remB.addEventListener('click', (ev)=>{ ev.stopPropagation(); bankSlots[i] = null; renderBankSlots(); updateBankStats(); });
+      slot.appendChild(remB);
+    } else {
+      slot.textContent = '';
+      const emptyLabel = document.createElement('div');
+      emptyLabel.style.color = '#aaa';
+      emptyLabel.style.fontWeight = '700';
+      emptyLabel.style.pointerEvents = 'none';
+      emptyLabel.textContent = 'Vide';
+      slot.appendChild(emptyLabel);
+
+      const addBtn = document.createElement('button');
+      addBtn.className = 'slot-add';
+      addBtn.title = 'Ajouter ici';
+      addBtn.innerHTML = '+';
+      addBtn.addEventListener('click', (ev)=>{
+        ev.stopPropagation();
+        pendingBankSlot = i;
+        // fermer la banque avec animation et afficher le bouton vert pour finaliser l'ajout
+        if(bankPanel){
+          bankPanel.classList.add('closing');
+          setTimeout(()=>{
+            bankPanel.classList.remove('closing');
+            if(bankModal) bankModal.setAttribute('aria-hidden','true');
+            bankOpen = false;
+            updateAddButtonVisibility();
+            if(bankHint) bankHint.textContent = 'Choisissez un couteau puis appuyez sur + pour l\'ajouter.';
+          },260);
+        } else {
+          if(bankModal) bankModal.setAttribute('aria-hidden','true');
+          bankOpen = false;
+          updateAddButtonVisibility();
+        }
+      });
+      slot.appendChild(addBtn);
+    }
+
+    slot.addEventListener('click', ()=> onBankSlotClick(i));
+    bankSlotsRoot.appendChild(slot);
+  }
+  updateBankStats();
+}
+
+// ensure top5 adder created and toggled
+createTop5Adder();
+
+  function wireCaseSelector(){
+ 
+    if(caseSelect){ caseSelect.style.display = 'none'; }
+    if(caseTitleEl) caseTitleEl.textContent = currentBoxName;
+
+    const switchTo = (name)=>{
+      boxes[currentBoxName] = framesData.map(f=>({ ...f }));
+      currentBoxName = name;
+      if(caseTitleEl) caseTitleEl.textContent = currentBoxName;
+      loadBox(currentBoxName);
+     
+      document.querySelectorAll('.case-thumb').forEach(t=>t.classList.remove('active'));
+      const sel = (name==='Gamma 2 Case') ? thumbGamma : thumbRevolver;
+      if(sel) sel.classList.add('active');
+    };
+
+  if(thumbGamma) thumbGamma.addEventListener('click', ()=> switchTo('Gamma 2 Case'));
+  if(thumbRevolver) thumbRevolver.addEventListener('click', ()=> switchTo('Revolver Case'));
+  if(thumbTop5) thumbTop5.addEventListener('click', ()=> switchTo('Top 5'));
+
+  
+  if(currentBoxName==='Gamma 2 Case' && thumbGamma) thumbGamma.classList.add('active');
+  if(currentBoxName==='Revolver Case' && thumbRevolver) thumbRevolver.classList.add('active');
+  if(currentBoxName==='Top 5' && thumbTop5) thumbTop5.classList.add('active');
+  
+    const toggleBlueGemVisibility = ()=>{
+      if(blueGemSection) blueGemSection.style.display = (currentBoxName==='Revolver Case') ? 'block' : 'none';
+    };
+    toggleBlueGemVisibility();
+    
+    const originalSwitch = switchTo;
+    if(thumbGamma) thumbGamma.addEventListener('click', ()=> setTimeout(toggleBlueGemVisibility,50));
+    if(thumbRevolver) thumbRevolver.addEventListener('click', ()=> setTimeout(toggleBlueGemVisibility,50));
+    if(thumbTop5) thumbTop5.addEventListener('click', ()=> setTimeout(toggleBlueGemVisibility,50));
+  }
+
+  if(blueGemRange){
+    blueGemRange.addEventListener('input', ()=>{
+      const mapped = mapBlueGemSlider(Number(blueGemRange.value));
+      if(blueGemValue) blueGemValue.textContent = mapped.toFixed(2) + '×';
+      
+      updatePreview();
+    });
+  }
+
+  if(blueGemEnable){
+    blueGemEnable.addEventListener('change', ()=>{
+     
+      const enabled = !!blueGemEnable.checked;
+      if(blueGemValue) blueGemValue.style.opacity = enabled ? '1' : '0.35';
+      if(blueGemRange) blueGemRange.disabled = !enabled;
+      if(blueGemSection){
+        blueGemSection.classList.toggle('disabled', !enabled);
+      }
+      updatePreview();
+    });
+   
+    if(blueGemValue) blueGemValue.style.opacity = '0.35';
+    if(blueGemSection) blueGemSection.classList.add('disabled');
+  }
+
+  
+  if(emeraldEnable){
+    emeraldEnable.addEventListener('change', ()=>{ updatePreview(); });
+  }
+
+
+function mapPriceSlider(norm){
+  const n = Math.max(0, Math.min(1000, Number(norm||0)));
+  const LOW_MIN = 100;
+  const LOW_MAX = 100000;      
+  const HIGH_MAX = 25000000;  
+  const LOW_BAND = 750;     
+  const EASE = 2.6;          
+
+  if(n <= LOW_BAND){
+
+    const t = Math.pow(n / LOW_BAND, EASE);
+    return LOW_MIN + t * (LOW_MAX - LOW_MIN);
+  }
+
+  const t = Math.pow((n - LOW_BAND) / (1000 - LOW_BAND), EASE);
+  return LOW_MAX + t * (HIGH_MAX - LOW_MAX);
+}
+
+  
+  function computeMaxForFrame(i){
+    const fd = framesData[i] || {};
+    const base = Number(fd.basePrice || 0);
+    if(!base || base <= 0) return 0;
+   
+    const fnMult = CONDITION_MULT['FN'] || 1.0;
+    const statMult = STATTRAK_MULT || 1.0;
+    let maxMul = fnMult * statMult;
+
+   
+    if(currentBoxName === 'Revolver Case'){
+      
+      const gemMax = (typeof mapBlueGemSlider === 'function') ? mapBlueGemSlider(1000) : 28.5;
+      const name = String(fd.name||'').toLowerCase();
+      const img = String(fd.img||'').toLowerCase();
+      if(name.includes('case hardened') || img.includes('case_hardened')){
+        maxMul *= gemMax;
+      }
+    }
+
+   
+    const nameL = String(fd.name||'').toLowerCase();
+    const imgL = String(fd.img||'').toLowerCase();
+    const isEmerald = (currentBoxName === 'Gamma 2 Case') && (nameL.includes('gamma doppler') || imgL.includes('gamma_doppler'));
+    if(isEmerald){
+      maxMul *= 8.0;
+    }
+
+
+    const maxValue = base * maxMul;
+    return maxValue;
+  }
+
+  
+  function recomputeAllMaxes(){
+    for(let i=0;i<framesData.length;i++){
+      framesData[i].maxPossible = computeMaxForFrame(i);
+    }
+  }
+
+
+  function applyPriceFilter(threshold){
+    for(let i=0;i<framesData.length;i++){
+      const frameEl = document.querySelector(`.frame[data-index="${i}"]`);
+      if(!frameEl) continue;
+      const maxVal = Number(framesData[i] && framesData[i].maxPossible ? framesData[i].maxPossible : 0);
+      if(maxVal < threshold){
+        frameEl.classList.add('dimmed');
+      } else {
+        frameEl.classList.remove('dimmed');
+      }
+    }
+  }
+
+
+  const priceFilterRange = document.getElementById('priceFilterRange');
+  const priceFilterValue = document.getElementById('priceFilterValue');
+  if(priceFilterRange && priceFilterValue){
+   
+    const initialMapped = mapPriceSlider(Number(priceFilterRange.value));
+    priceFilterValue.textContent = formatPriceUSD(initialMapped);
+
+    priceFilterRange.addEventListener('input', ()=> {
+      const mapped = mapPriceSlider(Number(priceFilterRange.value));
+      priceFilterValue.textContent = formatPriceUSD(mapped);
+      applyPriceFilter(mapped);
+    });
+  }
+
+ 
+  function setFrameData(i, { name=null, img=null, basePrice=null, condition=null, stattrak=false }={}){
+    if(i<0||i>=framesData.length) return;
+    framesData[i].name = name;
+    framesData[i].img = img;
+    framesData[i].basePrice = basePrice;
+    if(condition!==undefined && condition!==null) framesData[i].condition = condition;
+    framesData[i].stattrak = !!stattrak;
+
+    const frame = document.querySelector(`.frame[data-index="${i}"]`);
+    if(!frame) return;
+
+    const thumb = frame.querySelector('.thumb');
+    thumb.textContent = '';
+
+    if(img){
+      const exts = ['png','jpg','webp'];
+      let attached = false;
+      for(const ext of exts){
+        const im = new Image();
+        im.src = `${img}.${ext}`;
+        im.alt = name||'';
+        im.onload = ()=>{ if(!attached){ thumb.textContent = ''; im.className = 'frame-img'; thumb.appendChild(im); attached = true; } };
+      }
+      setTimeout(()=>{ if(!thumb.querySelector('img')) thumb.textContent = name||''; },600);
+    } else {
+      thumb.textContent = name||'';
+    }
+
+    const ov = frame.querySelector('.price-overlay');
+    if(ov) ov.textContent = (basePrice!=null)?formatPriceUSD(basePrice):'';
+
+    let mb = frame.querySelector('.money-badge');
+    if(!mb){ mb = document.createElement('div'); mb.className = 'money-badge'; frame.appendChild(mb); }
+    mb.textContent = (basePrice!=null)?formatPriceUSD(basePrice):'';
+
+    const eb = frame.querySelector('.emerald-badge'); if(eb) eb.remove();
+
+    let titleOv = frame.querySelector('.title-overlay');
+    if(!titleOv){ titleOv = document.createElement('div'); titleOv.className = 'title-overlay'; frame.appendChild(titleOv); }
+    titleOv.textContent = name||'';
+
+    
+    framesData[i].maxPossible = computeMaxForFrame(i);
+  }
+
+ 
+  function loadBox(name){
+    const data = boxes[name];
+    if(!data) return;
+    framesData = data.map(f=>({ ...f }));
+  
+    const isTop5 = (name === 'Top 5');
+    if(grid){
+      grid.classList.toggle('layout-top5', isTop5);
+    }
+    renderGrid(framesData.length);
+    for(let i=0;i<framesData.length;i++){
+      const f = framesData[i];
+      setFrameData(i,{ name:f.name||null, img:f.img||null, basePrice:f.basePrice, condition:f.condition||null, stattrak:!!f.stattrak });
+      
+      const frameEl = document.querySelector(`.frame[data-index="${i}"]`);
+      if(frameEl){
+        if(isTop5) frameEl.classList.add('top5-frame'); else frameEl.classList.remove('top5-frame');
+      }
+    }
+   
+    currentBoxName = name;
+    recomputeAllMaxes();
+
+    activeFrameIndex=null;
+    updatePreview();
+
+   
+    if(priceFilterRange){
+      const mapped = mapPriceSlider(Number(priceFilterRange.value));
+      applyPriceFilter(mapped);
+    }
+  }
+
+
+
+
+  if(sortSelect) sortSelect.addEventListener('change',(e)=>{
+    const mode = e.target.value||'default';
+   
+    if(mode==='default'){
+      if(boxes[currentBoxName]){
+        framesData = boxes[currentBoxName].map(f=>({ ...f }));
+        renderGrid(framesData.length);
+        for(let i=0;i<framesData.length;i++){
+          const f=framesData[i];
+          setFrameData(i,{ name:f.name, img:f.img, basePrice:f.basePrice, condition:f.condition, stattrak:f.stattrak });
+        }
+        activeFrameIndex=null;
+        updatePreview();
+      }
+      return;
+    }
+
+   
+    if(mode==='group-pattern' || mode==='group-pattern-alpha'){
+      const normalize = s=>String(s||'').toLowerCase().trim();
+
+      const extractSkin = (item)=>{
+        if(!item) return 'zzz-other';
+        const n = String(item.name||'').trim();
+        if(n.includes('|')){
+          const parts = n.split('|');
+          return normalize(parts.slice(1).join('|'));
+        }
+        
+        let img = String(item.img||'').toLowerCase().replace(/[_\-]+/g,' ').trim();
+        
+        img = img.replace(/\b(bayonet|flipknife|karambit|gutknife|m9bayonet|m9 bayonet|knife|case|the|of)\b/g,'').replace(/\s+/g,' ').trim();
+        if(img) return normalize(img);
+        return 'zzz-other';
+      };
+
+      const buckets = {};
+      framesData.forEach(item=>{
+        const key = extractSkin(item) || 'zzz-other';
+        if(!buckets[key]) buckets[key] = [];
+        buckets[key].push(item);
+      });
+
+      
+      let keys = Object.keys(buckets);
+      if(mode==='group-pattern-alpha'){
+        keys = keys.sort();
+      } else {
+        const preferred = ['gamma doppler','case hardened','lore','bright water','crimson web','fade','stained','slaughter','scarred','urban masked'];
+        const ordered = [];
+        preferred.forEach(p=>{ if(keys.includes(p)) ordered.push(p); });
+        keys.forEach(k=>{ if(!ordered.includes(k)) ordered.push(k); });
+        keys = ordered;
+      }
+
+      const newList = [];
+      keys.forEach(k=> newList.push(...buckets[k]));
+      framesData = newList.map(n=>({ ...n }));
+
+      renderGrid(framesData.length);
+      for(let i=0;i<framesData.length;i++){
+        const f = framesData[i];
+        setFrameData(i,{ name:f.name, img:f.img, basePrice:f.basePrice, condition:f.condition, stattrak:f.stattrak });
+      }
+      activeFrameIndex=null;
+      updatePreview();
+      return;
+    }
+
+    
+    const arr = framesData.map((d,i)=>({i,d}));
+    if(mode==='price-asc') arr.sort((a,b)=>((a.d.basePrice||0)-(b.d.basePrice||0)));
+    else if(mode==='price-desc') arr.sort((a,b)=>((b.d.basePrice||0)-(a.d.basePrice||0)));
+    else if(mode==='name-asc') arr.sort((a,b)=>String(a.d.name||'').localeCompare(String(b.d.name||'')));
+    else if(mode==='name-desc') arr.sort((a,b)=>String(b.d.name||'').localeCompare(String(a.d.name||'')));
+
+    for(let pos=0; pos<arr.length; pos++) framesData[pos] = { ...arr[pos].d };
+    renderGrid(framesData.length);
+    for(let i=0;i<framesData.length;i++){
+      const f=framesData[i];
+      setFrameData(i,{ name:f.name, img:f.img, basePrice:f.basePrice, condition:f.condition, stattrak:f.stattrak });
+    }
+    activeFrameIndex=null;
+    updatePreview();
+  });
+
+ 
+(function enableThumbTilt(){
+  if(!grid) return;
+  let lastFrame = null;
+  let lastImg = null;
+  function onPointerMove(e){
+    const frame = e.target.closest('.frame');
+    if(!frame || !grid.contains(frame)){
+      
+      if(lastImg){
+        lastImg.classList.add('resetting');
+        lastImg.style.transform = 'perspective(900px) rotateX(0deg) rotateY(0deg) scale(1)';
+        if(lastFrame) lastFrame.classList.remove('tilting');
+        lastImg = lastFrame = null;
+        setTimeout(()=>{ if(document.querySelectorAll('.resetting')) document.querySelectorAll('.resetting').forEach(el=>el.classList.remove('resetting')); },450);
+      }
+      return;
+    }
+    const img = frame.querySelector('.thumb img');
+    if(!img) return;
+    lastFrame = frame;
+    lastImg = img;
+    
+    const r = frame.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width;
+    const py = (e.clientY - r.top) / r.height;
+   
+    const rotY = (px - 0.5) * 18; 
+    const rotX = -(py - 0.5) * 12;  
+    const scale = 1.035;
+   
+    img.classList.remove('resetting');
+    img.style.transform = `perspective(900px) rotateX(${rotX}deg) rotateY(${rotY}deg) scale(${scale})`;
+    frame.classList.add('tilting');
+  }
+
+  function onPointerLeaveGrid(){
+    if(lastImg){
+      lastImg.classList.add('resetting');
+      lastImg.style.transform = 'perspective(900px) rotateX(0deg) rotateY(0deg) scale(1)';
+      if(lastFrame) lastFrame.classList.remove('tilting');
+      lastImg = lastFrame = null;
+      setTimeout(()=>{ document.querySelectorAll('.resetting').forEach(el=>el.classList.remove('resetting')); },450);
+    }
+  }
+
+  
+  grid.addEventListener('pointermove', onPointerMove, { passive: true });
+  grid.addEventListener('pointerleave', onPointerLeaveGrid, { passive: true });
+  
+  window.addEventListener('scroll', onPointerLeaveGrid, { passive: true });
+  window.addEventListener('blur', onPointerLeaveGrid);
+})();
+
+  
+  window.setFrameData = setFrameData;
+  window.loadBox = loadBox;
+  window.framesData = framesData;
+
+ 
+  renderConditions();
+prefillGamma2();
+buildRevolver();
+buildTop5();
+wireCaseSelector();
+renderGrid(framesData.length);
+loadBox('Gamma 2 Case');
+updatePreview();
+
+})();
