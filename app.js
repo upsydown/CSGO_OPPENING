@@ -130,12 +130,18 @@
 
   function formatMoney(n){ return `${Math.round((n + Number.EPSILON)*100)/100}`; }
 
+  // helper: formate un nom avec 2 chiffres après la virgule (string)
+  function fmt2(n){
+    const v = parseFloat(n) || 0;
+    return (Math.round((v + Number.EPSILON) * 100) / 100).toFixed(2);
+  }
+
   // Balance in muted (gris); rate shown separately in green where needed
   function updateBalanceDisplay(currentRate=0){
     const bd = document.getElementById('balance-display');
     if (!bd) return;
-    bd.innerHTML = `<div style="font-weight:700;color:var(--muted);font-size:16px">${formatMoney(balance)} coins</div>
-                    <div style="font-size:13px;color:var(--muted)">Total général: <span style="color:var(--accent);font-weight:800;font-size:16px">${currentRate}</span>/s</div>`;
+    bd.innerHTML = `<div style="font-weight:700;color:var(--muted);font-size:16px">${fmt2(balance)} coins</div>
+                    <div style="font-size:13px;color:var(--muted)">Total général: <span style="color:var(--accent);font-weight:800;font-size:16px">${fmt2(currentRate)}</span>/s</div>`;
   }
 
   /* Sidebar (kept function but sidebar element removed) */
@@ -219,6 +225,94 @@
     });
   }
 
+  // Helpers: détecte couleur dominante d'une image (renvoie 'red'|'yellow'|'purple'|'other')
+  function rgbToHsl(r,g,b){
+    r/=255; g/=255; b/=255;
+    const max=Math.max(r,g,b), min=Math.min(r,g,b);
+    let h=0, s=0, l=(max+min)/2;
+    if(max!==min){
+      const d = max-min;
+      s = l>0.5 ? d/(2-max-min) : d/(max+min);
+      switch(max){
+        case r: h = (g-b)/d + (g<b?6:0); break;
+        case g: h = (b-r)/d + 2; break;
+        case b: h = (r-g)/d + 4; break;
+      }
+      h /= 6;
+    }
+    return { h: Math.round(h*360), s, l };
+  }
+  function detectDominantHue(imgEl){
+    return new Promise(resolve => {
+      try {
+        const w = 64, h = 64; // plus grand pour meilleure précision
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(imgEl, 0, 0, w, h);
+        const data = ctx.getImageData(0,0,w,h).data;
+
+        const counts = { red:0, yellow:0, purple:0, blue:0, other:0 };
+        let totalWeighted = 0;
+
+        for (let y = 0; y < h; y++){
+          for (let x = 0; x < w; x++){
+            const i = (y * w + x) * 4;
+            const alpha = data[i+3];
+            if (alpha < 24) continue; // allow slightly more semi-transparents
+            const r = data[i], g = data[i+1], b = data[i+2];
+            const hsl = rgbToHsl(r,g,b);
+            const hue = hsl.h;
+            const sat = hsl.s;
+            const light = hsl.l;
+
+            // ignore almost grayscale / extreme glare/dark pixels (low weight)
+            if (sat < 0.06 || light < 0.06 || light > 0.94) {
+              counts.other += 0.1;
+              totalWeighted += 0.1;
+              continue;
+            }
+
+            let cat = 'other';
+            // élargir la plage rouge pour capter plus de fonds rouges
+            if (hue <= 40 || hue >= 330) cat = 'red';
+            else if (hue >= 30 && hue <= 75) cat = 'yellow';
+            else if (hue >= 250 && hue <= 340) cat = 'purple';
+            else if (hue >= 170 && hue <= 260) cat = 'blue';
+            else cat = 'other';
+
+            // poids plus fort sur les bords (probable fond) et selon saturation
+            const edgeWeight = (x < 7 || y < 7 || x >= w-7 || y >= h-7) ? 3 : 1;
+            const satBoost = 1 + Math.max(0, (sat - 0.06));
+            const weight = Math.max(0.2, edgeWeight * satBoost);
+
+            counts[cat] += weight;
+            totalWeighted += weight;
+          }
+        }
+
+        // choose best category
+        let best = 'other', bestVal = 0;
+        for (const k of Object.keys(counts)){
+          if (counts[k] > bestVal){ bestVal = counts[k]; best = k; }
+        }
+
+        // If red is a large portion of weighted pixels, prefer red even if not strictly maximal
+        const redShare = totalWeighted ? (counts.red / totalWeighted) : 0;
+        if (redShare >= 0.35) {
+          resolve('red');
+          return;
+        }
+
+        // If blue is best but purple close (logo on purple bg), prefer purple
+        if (best === 'blue' && counts.purple > 0 && counts.purple >= counts.blue * 0.7) best = 'purple';
+
+        resolve(best);
+      } catch (e){
+        resolve('other');
+      }
+    });
+  }
+
   /* Render all previews in order — previews wider so 5 images readably visible */
   function renderAllPreviews(){
     const canvas = document.getElementById('canvas');
@@ -254,14 +348,12 @@
       node.style.boxSizing = 'border-box';
       node.style.marginBottom = '12px';
 
-      // header row with name, per-window rate (green and larger), earned & controls
+      // header
       const header = document.createElement('div'); header.className = 'preview-header';
       const nameEl = document.createElement('div'); nameEl.innerHTML = `<strong>${escapeHtml(w.name)}</strong>`;
       const statsWrap = document.createElement('div'); statsWrap.className = 'preview-stats';
       const rateEl = document.createElement('div'); rateEl.className = 'preview-rate'; rateEl.id = `preview-rate-${w.id}`;
-      rateEl.style.fontSize = '20px';
-      rateEl.style.fontWeight = '900';
-      rateEl.style.color = 'var(--accent)';
+      rateEl.style.fontSize = '20px'; rateEl.style.fontWeight = '900'; rateEl.style.color = 'var(--accent)';
       const earnedEl = document.createElement('div'); earnedEl.className = 'earned-ticker'; earnedEl.id = `preview-earned-${w.id}`;
       const controls = document.createElement('div');
       const btnStart = document.createElement('button'); btnStart.className='btn small-btn'; btnStart.textContent='Start';
@@ -281,85 +373,119 @@
       header.appendChild(controls);
       node.appendChild(header);
 
-      // slots row — taille augmentée pour rendu visuel plus agréable
+      // slots row — image area taller; we'll append a gold bar below each image to host the /s text
       const slotsRow = document.createElement('div'); slotsRow.className = 'slots-row';
       slotsRow.style.overflowX = 'auto';
       slotsRow.style.paddingBottom = '6px';
       slotsRow.style.gap = '12px';
+
       for (let i=0;i<5;i++){
         const s = (w.slots && w.slots[i]) ? w.slots[i] : {path:null,name:'',value:0};
         const slotEl = document.createElement('div'); slotEl.className = 'slot-large';
-        // taille agrandie : largeur ~180px, hauteur ~140px (image area + overlay + caption)
         slotEl.style.flex = '0 0 180px';
-        slotEl.style.height = '140px';
+        slotEl.style.height = '160px';
         slotEl.style.minWidth = '180px';
         slotEl.style.display = 'flex';
         slotEl.style.flexDirection = 'column';
         slotEl.style.alignItems = 'stretch';
         slotEl.style.justifyContent = 'flex-start';
-        slotEl.style.padding = '8px';
+        slotEl.style.padding = '6px';
         slotEl.style.boxSizing = 'border-box';
 
         if (s && s.path){
           const imgWrap = document.createElement('div');
           imgWrap.style.position = 'relative';
           imgWrap.style.width = '100%';
-          imgWrap.style.height = '110px'; // image area, espace pour overlay
+          imgWrap.style.height = '132px';
           imgWrap.style.overflow = 'hidden';
           imgWrap.style.borderRadius = '8px';
           const img = document.createElement('img');
           img.src = s.path; img.alt = s.name || '';
           img.style.width = '100%'; img.style.height = '100%'; img.style.objectFit = 'cover';
           imgWrap.appendChild(img);
-          // overlay bottom (blanc, gras, discret mais lisible)
+
+          // hide old overlay (not used)
           const overlay = document.createElement('div');
-          overlay.style.position = 'absolute';
-          overlay.style.left = '8px';
-          overlay.style.right = '8px';
-          overlay.style.bottom = '8px';
-          overlay.style.padding = '6px 8px';
-          overlay.style.textAlign = 'center';
-          overlay.style.color = '#fff';
-          overlay.style.fontWeight = '800';
-          overlay.style.fontSize = '14px';
-          overlay.style.background = 'linear-gradient(180deg, rgba(0,0,0,0.0), rgba(0,0,0,0.6))';
-          overlay.style.borderRadius = '6px';
-          overlay.textContent = `${s.value || 0}/s`;
+          overlay.style.display = 'none';
           imgWrap.appendChild(overlay);
           slotEl.appendChild(imgWrap);
 
-          // petit espace pour légende (vide car nom retiré)
+          // placeholder caption area (will be replaced by gold bar)
           const caption = document.createElement('div');
           caption.style.marginTop = '6px';
-          caption.style.height = '18px';
-          caption.style.fontSize = '12px';
-          caption.style.color = 'rgba(255,255,255,0.95)';
-          caption.style.fontWeight = '700';
-          caption.textContent = ''; // nom retiré
+          caption.style.height = '0px';
+          caption.textContent = '';
           slotEl.appendChild(caption);
+
+          // add gold prolongation bar for every image
+          const addProlong = () => {
+            const goldBg = '#D4AF37';
+            const bar = document.createElement('div');
+            bar.style.width = '100%';
+            bar.style.height = '28px';
+            bar.style.marginTop = '6px';
+            bar.style.borderRadius = '6px';
+            bar.style.background = goldBg;
+            bar.style.display = 'flex';
+            bar.style.alignItems = 'center';
+            bar.style.justifyContent = 'center';
+            bar.style.color = '#000'; // texte sombre pour meilleur contraste sur or
+            bar.style.fontWeight = '800';
+            bar.style.fontSize = '14px';
+            bar.textContent = `${fmt2(s.value)}/s`;
+            slotEl.replaceChild(bar, caption);
+          };
+
+          if (img.complete && img.naturalWidth !== 0) addProlong();
+          else img.addEventListener('load', addProlong);
+          img.addEventListener('error', addProlong);
         } else {
-          const empty = document.createElement('div'); empty.style.color='var(--muted)'; empty.textContent='vide';
-          empty.style.marginTop = '48px';
-          empty.style.fontSize = '13px';
-          slotEl.appendChild(empty);
+          // empty slot: create empty image container same height and a muted prolongation bar to fill space
+          const emptyWrap = document.createElement('div');
+          emptyWrap.style.width = '100%';
+          emptyWrap.style.height = '132px';
+          emptyWrap.style.borderRadius = '8px';
+          emptyWrap.style.background = 'rgba(255,255,255,0.02)';
+          emptyWrap.style.display = 'flex';
+          emptyWrap.style.alignItems = 'center';
+          emptyWrap.style.justifyContent = 'center';
+          emptyWrap.style.color = 'var(--muted)';
+          emptyWrap.style.fontSize = '13px';
+          emptyWrap.textContent = 'vide';
+          slotEl.appendChild(emptyWrap);
+
+          const bar = document.createElement('div');
+          bar.style.width = '100%';
+          bar.style.height = '28px';
+          bar.style.marginTop = '6px';
+          bar.style.borderRadius = '6px';
+          bar.style.background = 'linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.0))';
+          bar.style.display = 'flex';
+          bar.style.alignItems = 'center';
+          bar.style.justifyContent = 'center';
+          bar.style.color = '#fff';
+          bar.style.fontWeight = '800';
+          bar.style.fontSize = '14px';
+          bar.textContent = `${fmt2(s.value)}/s`;
+          slotEl.appendChild(bar);
         }
+
         slotsRow.appendChild(slotEl);
       }
-      node.appendChild(slotsRow);
 
+      node.appendChild(slotsRow);
       canvas.appendChild(node);
 
-      // initialize per-window stats if missing
+      // stats init/update
       if (!perWindowStats[w.id]) perWindowStats[w.id] = { earned: 0, elapsed: 0 };
-      // update rate & earned displays
       const rate = (w.slots || []).reduce((acc,s) => acc + (parseFloat(s.value) || 0), 0);
       const rateElDom = document.getElementById(`preview-rate-${w.id}`);
       const earnedElDom = document.getElementById(`preview-earned-${w.id}`);
-      if (rateElDom) rateElDom.textContent = `${rate}/s`;
+      if (rateElDom) rateElDom.textContent = `${fmt2(rate)}/s`;
       if (earnedElDom) earnedElDom.textContent = `Gagné: ${Math.round((perWindowStats[w.id].earned + Number.EPSILON)*100)/100}`;
     });
 
-    // apply ranking styles (gold/silver/bronze)
+    // ranking styles
     const topIds = computeTop3Ids();
     applyRankingStyles(topIds);
   }
@@ -382,24 +508,28 @@
       const w = windows.find(x=>x.id===earningMode.id);
       if (!w) return stopEarning();
       const rate = (w.slots || []).reduce((acc,s) => acc + (parseFloat(s.value) || 0), 0);
-      balance = (parseFloat(balance) || 0) + rate;
+      // per-window earned stays the same (original rate)
       perWindowStats[w.id].earned += rate;
       perWindowStats[w.id].elapsed += 1;
-      // update displays
+      // balance increases faster: double the added amount
+      const added = rate * 2;
+      balance = (parseFloat(balance) || 0) + added;
+      // update displays (header shows doubled balance, per-window remains original)
       updateBalanceDisplay(rate);
       updatePreviewForWindow(w.id, rate);
     } else if (earningMode.type === 'all'){
-      // sum rates and add
+      // sum rates and add (balance doubled)
       let totalRate = 0;
       windows.forEach(w => {
         const r = (w.slots || []).reduce((acc,s) => acc + (parseFloat(s.value) || 0), 0);
         totalRate += r;
         if (!perWindowStats[w.id]) perWindowStats[w.id] = { earned:0, elapsed:0 };
-        perWindowStats[w.id].earned += r;
+        perWindowStats[w.id].earned += r; // keep per-window earned as original r
         perWindowStats[w.id].elapsed += 1;
       });
-      balance = (parseFloat(balance) || 0) + totalRate;
-      // update header and each preview
+      const addedTotal = totalRate * 2;
+      balance = (parseFloat(balance) || 0) + addedTotal;
+      // update header and each preview (header shows doubled balance addition but rate display unchanged)
       updateBalanceDisplay(totalRate);
       windows.forEach(w => updatePreviewForWindow(w.id));
     }
@@ -423,7 +553,7 @@
     const rate = (w.slots || []).reduce((acc,s) => acc + (parseFloat(s.value) || 0), 0);
     const rateEl = document.getElementById(`preview-rate-${id}`);
     const earnedEl = document.getElementById(`preview-earned-${id}`);
-    if (rateEl) rateEl.innerHTML = `<span style="color:var(--accent);font-weight:900;font-size:20px">${rate}</span>/s`;
+    if (rateEl) rateEl.innerHTML = `<span style="color:var(--accent);font-weight:900;font-size:20px">${fmt2(rate)}</span>/s`;
     if (earnedEl) earnedEl.textContent = `Gagné: ${Math.round((perWindowStats[id]?.earned || 0 + Number.EPSILON)*100)/100}`;
     const globalRate = windows.reduce((sum,w) => sum + (w.slots || []).reduce((a,s)=> a + (parseFloat(s.value)||0), 0), 0);
     updateBalanceDisplay(globalRate);
@@ -442,14 +572,15 @@
       perWindowStats[w.id].elapsed += secs;
       totalAdded += added;
     });
-    balance = (parseFloat(balance) || 0) + totalAdded;
+    // double the balance addition (displayed balance increases x2), per-window earned kept as original
+    balance = (parseFloat(balance) || 0) + (totalAdded * 2);
     // update displays and ranking
     renderAllPreviews();
     updateBalanceDisplay(windows.reduce((sum,w) => sum + (w.slots || []).reduce((a,s)=> a + (parseFloat(s.value)||0), 0), 0));
     const topIds = computeTop3Ids();
     applyRankingStyles(topIds);
     saveState();
-    alert(`Simulation : ${secs} secondes simulées. +${Math.round((totalAdded+Number.EPSILON)*100)/100} coins`);
+    alert(`Simulation : ${secs} secondes simulées. +${fmt2(totalAdded * 2)} coins (multiplié x2)`);
   }
 
   /* Create / Edit modal with position select (unchanged) */
