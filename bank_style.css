@@ -1,0 +1,167 @@
+:root{
+  --bg-start: #120317;
+  --bg-end: #2b0b3b;
+  --card:#24102a;
+  --accent:#a78bfa; /* violet accent */
+  --accent-2:#7c3aed;
+  --muted:#cfc1ea;
+  --muted-2:#9f86c9;
+  --danger:#ff6b9b;
+  --glass: rgba(255,255,255,0.04);
+}
+*{box-sizing:border-box;font-family:Inter,Segoe UI,Helvetica,Arial;}
+body{
+  margin:0;
+  background: linear-gradient(180deg,var(--bg-start) 0%, var(--bg-end) 100%);
+  color: #efe9ff;
+  padding:24px;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+}
+.wrap{max-width:920px;margin:0 auto;}
+h1{margin:0 0 16px 0;color:var(--accent);letter-spacing:0.2px;}
+.bank-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;}
+.bank-card{
+  background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.03));
+  border:1px solid rgba(167,139,250,0.08);
+  padding:16px;border-radius:10px;
+  box-shadow:0 8px 24px rgba(43,11,59,0.45);
+  display:flex;flex-direction:column;gap:12px;transition:transform .18s,opacity .18s,box-shadow .18s;
+}
+.bank-card:hover{transform:translateY(-6px);box-shadow:0 14px 40px rgba(43,11,59,0.6);}
+.header{display:flex;align-items:center;justify-content:space-between;}
+.title{font-weight:600;color:#fff;}
+.meta{font-size:12px;color:var(--muted);}
+.actions{display:flex;gap:8px;align-items:center;}
+.btn{
+  border:0;padding:6px 10px;border-radius:8px;cursor:pointer;
+  background:var(--glass);color:var(--accent);font-weight:600;
+  transition:background .12s,transform .08s;
+}
+.btn:hover{background:rgba(167,139,250,0.08);transform:translateY(-1px);}
+.btn.danger{background:linear-gradient(90deg,#3b0f1d,#5a1533);color:#fff;border:1px solid rgba(255,255,255,0.02);}
+.btn.ghost{background:transparent;color:var(--muted);border:1px solid rgba(255,255,255,0.03);}
+.closed{opacity:0.6;filter:grayscale(0.2);border-left:4px solid var(--muted-2);background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(0,0,0,0.02));}
+.toast{font-size:13px;color:var(--muted);}
+.desc{font-size:13px;color:var(--muted);}
+
+.controls{margin-top:18px;display:flex;gap:8px;}
+#new-name{flex:1;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);color:inherit;}
+.close-btn{
+  position:absolute;top:10px;right:10px;width:28px;height:28px;border-radius:6px;border:0;
+  background:transparent;color:var(--accent);font-size:18px;line-height:28px;cursor:pointer;
+  transition:background .12s, color .12s;
+}
+.bank-card .close-btn:hover{background:rgba(167,139,250,0.06);color:var(--accent-2);}
+
+@media (max-width:520px){
+  .bank-list{grid-template-columns:1fr;}
+  body{padding:14px;}
+}
+
+.thumbs{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}
+.thumb{width:64px;height:64px;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,0.04);background:rgba(0,0,0,0.06);display:flex;align-items:center;justify-content:center;}
+.thumb img{width:100%;height:100%;object-fit:cover;}
+.cat-select{padding:6px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit;margin-right:8px;}
+
+/* card layout improvements for readability */
+.bank-card{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  min-height:220px;
+  padding:16px;
+  position:relative;
+  overflow:visible;
+}
+
+/* top area */
+.card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
+.card-top .title{font-size:16px;}
+.card-top .meta{font-size:12px;color:var(--muted);margin-top:4px;}
+
+/* slots grid: 5 fixed slots, responsive */
+.slots{
+  display:grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap:10px;
+  align-items:start;
+}
+
+/* single slot */
+.slot{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  align-items:center;
+  text-align:center;
+  min-width:0;
+}
+.slot-thumb{
+  width:100%;
+  aspect-ratio:1/1;
+  border-radius:8px;
+  overflow:hidden;
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.03));
+  border:1px solid rgba(167,139,250,0.06);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.slot-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+.slot-empty{font-size:28px;color:var(--muted);}
+
+/* small button style for select image */
+.btn.small{padding:6px 8px;font-size:12px;border-radius:8px;}
+
+/* select styling kept */
+.slot-select{width:100%;padding:6px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit;font-size:13px;}
+
+/* make cards not overlap */
+.bank-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;}
+
+/* ensure mobile friendly: stacks slots */
+@media (max-width:740px){
+  .slots{grid-template-columns: repeat(2, 1fr);}
+}
+@media (max-width:420px){
+  .slots{grid-template-columns: repeat(1, 1fr);}
+  .bank-list{grid-template-columns:1fr;}
+}
+
+/* dropdown knife menu */
+.knife-dropdown{
+  min-width:260px;
+  max-width:320px;
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:8px;
+  padding:8px;
+  background:linear-gradient(180deg, rgba(18,3,23,0.98), rgba(43,11,59,0.98));
+  border:1px solid rgba(167,139,250,0.12);
+  box-shadow:0 8px 30px rgba(0,0,0,0.6);
+  border-radius:10px;
+}
+.knife-item{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  align-items:center;
+  justify-content:center;
+  padding:6px;
+  background:transparent;
+  border:1px solid rgba(255,255,255,0.02);
+  border-radius:8px;
+  cursor:pointer;
+  color:inherit;
+}
+.knife-item img{width:100%;height:84px;object-fit:cover;border-radius:6px;}
+.knife-item .knife-name{font-size:12px;margin-top:4px;color:var(--muted);}
+.knife-item:hover{background:rgba(167,139,250,0.04);transform:translateY(-2px);}
+
+/* small layout tweaks for slot controls */
+.slot-controls{display:flex;gap:6px;width:100%;justify-content:center;}
+.btn.small{padding:6px 8px;font-size:12px;border-radius:8px;}
+/* keep thumbs consistent */
+.slot-thumb{min-height:64px;}
+/* end of added styles */

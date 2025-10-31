@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Banque — Sélection</title>
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;background:#0b0c0f;color:#eee;padding:18px}
+    .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+    .list{background:#0f1113;padding:12px;border-radius:8px;border:1px solid #222}
+    .item{padding:8px;border-bottom:1px solid #1a1a1a}
+    .meta{font-weight:700}
+    .sub{color:#b5b9bd;font-size:13px}
+    .empty{color:#9aa;padding:24px;border:1px dashed #222;border-radius:8px}
+    .btn{padding:8px 10px;border-radius:6px;border:0;cursor:pointer}
+  </style>
+</head>
+<body>
+  <div class="top">
+    <h2>Banque — Items sélectionnés</h2>
+    <div>
+      <button id="back" class="btn">Retour</button>
+      <button id="clear" class="btn" style="background:#c0392b;color:#fff;margin-left:8px">Vider</button>
+    </div>
+  </div>
+
+  <div id="content"></div>
+
+  <script>
+    function formatPrice(v){ if(v==null) return '—'; return '$' + Number(v).toFixed(2); }
+
+    const key = 'bankPageItems';
+    let items = [];
+    try{ items = JSON.parse(sessionStorage.getItem(key) || '[]'); }catch(e){ items = []; }
+    const content = document.getElementById('content');
+
+    if(!items || items.length === 0){
+      content.innerHTML = '<div class="empty">Aucun item dans la banque. Retourne sur la page principale et clique sur + pour ajouter.</div>';
+    } else {
+      const wrap = document.createElement('div'); wrap.className = 'list';
+      items.forEach(it=>{
+        const d = document.createElement('div'); d.className = 'item';
+        const title = document.createElement('div'); title.className = 'meta'; title.textContent = it.name;
+        d.appendChild(title);
+        const sub = document.createElement('div'); sub.className = 'sub';
+        sub.textContent = 'Condition: ' + (it.condition||'—') + (it.stattrak ? ' • StatTrak' : '') + ' • Prix final: ' + formatPrice(it.finalPrice);
+        d.appendChild(sub);
+        wrap.appendChild(d);
+      });
+      content.appendChild(wrap);
+    }
+
+    document.getElementById('back').addEventListener('click', ()=> window.location.href = './index.html');
+    document.getElementById('clear').addEventListener('click', ()=>{
+      if(!confirm('Vider la banque ?')) return;
+      sessionStorage.removeItem(key);
+      window.location.href = './index.html';
+    });
+  </script>
+</body>
+</html>

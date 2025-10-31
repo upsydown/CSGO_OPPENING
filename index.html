@@ -1,141 +1,32 @@
 <!doctype html>
 <html lang="fr">
 <head>
-	<meta charset="utf-8" />
-	<meta name="viewport" content="width=device-width,initial-scale=1" />
-	<title>CSGO Opening - Prototype</title>
-	<link rel="stylesheet" href="style.css" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Knife Bank</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-	<div class="app">
-		<main class="main">
-			<h1 class="title">Aperçu des cadres</h1>
-			<div class="case-switch">
-				<span id="caseTitle" class="case-title">Gamma 2 Case</span>
-				<div id="caseThumbs" class="case-thumbnails" style="margin-left:10px;">
-					<div class="case-thumb" data-case="Gamma 2 Case" id="thumbGamma"><img src="case_gamma_2.png" alt="Gamma 2"/></div>
-					<div class="case-thumb" data-case="Revolver Case" id="thumbRevolver"><img src="case_revolver.png" alt="Revolver"/></div>
-				</div>
-			</div>
+  <div class="app">
+    <header class="topbar">
+      <h1>Knife Bank</h1>
+      <div class="controls">
+        <button id="btn-new" class="btn btn-new">NEW</button>
+      </div>
+    </header>
 
-			<div class="sort-switch">
-				<label for="sortSelect" class="label">Trier</label>
-				<select id="sortSelect" class="select">
-					<option value="price-asc">Prix croissant</option>
-					<option value="price-desc">Prix décroissant</option>
-					<option value="group-pattern">Par catégorie (Lore, Bright Water)</option>
-				</select>
+    <main class="main">
+      <aside class="sidebar" id="sidebar">
+        <h3>Fenêtres</h3>
+        <div id="banks-list" class="banks-list"></div>
+      </aside>
 
-				<!-- Banque button -->
-				<button id="bankBtn" class="bank-btn" title="Ouvrir la banque">Banque</button>
-			</div>
+      <section class="canvas" id="canvas">
+        <div class="empty-hint">Clique sur NEW pour créer une fenêtre avec 5 emplacements.</div>
+      </section>
+    </main>
+  </div>
 
-			
-			<div id="priceFilterWrapper" style="margin:12px 0 8px;">
-				<label class="label" style="display:flex;justify-content:space-between;align-items:center;">
-					<span>Filtrer par valeur max estimée</span>
-					<strong id="priceFilterValue" style="color:#7CFC00;">$100</strong>
-				</label>
-				<input id="priceFilterRange" type="range" min="0" max="1000" step="1" value="0" style="width:100%; height:14px;"/>
-				<small style="color:#888;display:flex;justify-content:space-between;margin-top:6px;"><span>Min 100</span><span>Max 25 000 000</span></small>
-			</div>
-
-			<div id="grid" class="grid" aria-label="Grille de cadres">
-				
-				
-				<script>
-					
-				</script>
-			</div>
-		</main>
-
-		<aside class="sidebar" aria-label="Menu">
-			<h2>Menu</h2>
-
-			<div id="weaponName" class="weapon-name">Aucune arme sélectionnée</div>
-
-			<div id="preview" class="preview">
-				<div id="previewImg" class="preview-img">Aperçu</div>
-				<div class="price-info">
-					<div>Prix de base: <strong id="basePrice">—</strong></div>
-					<div>Multiplicateur: <strong id="multiplier">1</strong></div>
-					<div>Condition: <strong id="conditionDisplay">—</strong></div>
-					<div>StatTrak: <strong id="stattrakDisplay">Non</strong></div>
-					<div class="result">
-						Résultat: <strong id="resultPrice">—</strong>
-						<button id="addToBankBtn" class="add-bank" title="Ajouter à la banque">+</button>
-					</div>
-				</div>
-			</div>
-
-		
-			<div class="conditions-wrapper">
-				<div class="conditions-label">État / Condition</div>
-				<div id="conditions" class="conditions">
-					
-				</div>
-				<div class="stattrak">
-					<label><input type="checkbox" id="stattrakCheckbox" /> StatTrak</label>
-				</div>
-				<div id="emeraldSection" style="display:none; margin-top:12px;">
-					<label style="display:flex;align-items:center;gap:8px;color:#ddd;cursor:pointer;user-select:none;">
-						<input type="checkbox" id="emeraldEnable" />
-						<span style="color:#2ecc71;font-size:14px;line-height:1;">◈</span>
-						<span>Emerald (×8)</span>
-					</label>
-				</div>
-				<div id="blueGemSection" class="bluegem-section" style="display:none; margin-top:12px;">
-					<label class="label">Bleu Gemmes — multiplicateur (pattern: case_hardened)</label>
-					<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-						<label class="enable-label" style="display:flex;align-items:center;gap:8px;color:#ddd;cursor:pointer;user-select:none;">
-							<input type="checkbox" id="blueGemEnable" />
-							<span style="color:#61dafb;font-size:14px;line-height:1;">♦</span>
-							<span>Activer Bleu Gemmes</span>
-						</label>
-					</div>
-					
-					<input id="blueGemRange" type="range" min="0" max="1000" step="1" value="0" style="width:100%;" />
-					<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
-						<small style="color:#888">Min 28.5</small>
-						<strong id="blueGemValue" style="color:#fff">28.50×</strong>
-						<small style="color:#888">Max 5120.24</small>
-					</div>
-				</div>
-				<div id="finalLarge" class="final-large">Résultat: <strong id="finalLargeValue">—</strong></div>
-			</div>
-
-
-		</aside>
-	</div>
-
-	<!-- Bank modal -->
-	<div id="bankModal" class="bank-modal" aria-hidden="true">
-		<div class="bank-backdrop"></div>
-		<div class="bank-panel" role="dialog" aria-modal="true" aria-label="Banque">
-			<header class="bank-header">
-				<h3>Banque</h3>
-				<button id="bankClose" class="bank-close">×</button>
-			</header>
-			<section class="bank-body">
-				<div class="bank-slots" id="bankSlots">
-					<!-- 5 slots rendered by JS -->
-				</div>
-				<div class="bank-controls">
-					<div class="bank-stats">
-						<div>Total: <span id="bankTotal">$0.00</span></div>
-						<div>Par seconde: <span id="bankPerSec">$0.00/s</span></div>
-					</div>
-					<div class="bank-actions">
-						<button id="bankPlay" class="bank-play">Play</button>
-						<button id="bankPause" class="bank-pause" style="display:none">Pause</button>
-						<button id="bankClear" class="bank-clear">Vider</button>
-					</div>
-				</div>
-				<div class="bank-hint" id="bankHint">Cliquez sur une case puis sur un couteau pour l'ajouter.</div>
-			</section>
-		</div>
-	</div>
-
-	<script src="script.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

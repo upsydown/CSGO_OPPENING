@@ -1,242 +1,4 @@
 (function(){
-  // Elements
-  const btnNew = document.getElementById('btnNew');
-  const overlay = document.getElementById('overlay');
-  const closeBuilder = document.getElementById('closeBuilder');
-  const cancelBuilder = document.getElementById('cancelBuilder');
-  const validateBank = document.getElementById('validateBank');
-  const bankNameInput = document.getElementById('bankName');
-  const slotsContainer = document.getElementById('slotsContainer');
-  const thumbGrid = document.getElementById('thumbGrid');
-  const searchInput = document.getElementById('searchInput');
-  const refreshList = document.getElementById('refreshList');
-  const banksRoot = document.getElementById('banks');
-
-  // persistent storage key
-  const STORAGE_KEY = 'csgo_banks_v1';
-
-  // images list source:
-  // try to fetch ./images.json (recommended), otherwise try to auto-detect images present in project
-  let images = [];
-  const defaultImages = []; // optional: ['M9bayonet_case_hardened.png', 'karambit_case_hardened.png']
-
-  function loadImagesManifest(){
-    // try manifest first
-    return fetch('./images.json').then(r=>{
-      if(!r.ok) throw new Error('no manifest');
-      return r.json();
-    }).then(data=>{
-      if(Array.isArray(data)) {
-        // ensure entries are filenames (with extension) or plain names; store as-is
-        images = data.slice();
-      }
-    }).catch(()=>{
-      // fallback: build candidate bases from defaultImages and available frames/boxes (when script fully loaded)
-      const bases = new Set();
-
-      // add defaults (strip extension)
-      defaultImages.forEach(fn=>{
-        const base = String(fn||'').replace(/\.\w+$/,'').trim();
-        if(base) bases.add(base);
-      });
-
-      // try window.framesData (populated by other part of script)
-      try{
-        if(window.framesData && Array.isArray(window.framesData)){
-          window.framesData.forEach(f=>{
-            if(f && f.img) bases.add(String(f.img).replace(/\.\w+$/,''));
-          });
-        }
-      }catch(e){}
-
-      // try window.boxes if available
-      try{
-        if(window.boxes && typeof window.boxes === 'object'){
-          Object.values(window.boxes).forEach(arr=>{
-            if(Array.isArray(arr)){
-              arr.forEach(f=>{
-                if(f && f.img) bases.add(String(f.img).replace(/\.\w+$/,''));
-              });
-            }
-          });
-        }
-      }catch(e){}
-
-      // try to resolve which actual files exist by testing common extensions
-      const exts = ['png','jpg','webp','jpeg'];
-      const probes = [];
-      bases.forEach(base=>{
-        if(!base) return;
-        probes.push(new Promise(resolve=>{
-          let i = 0;
-          function tryNext(){
-            if(i >= exts.length){ resolve(null); return; }
-            const cand = base.match(/\.\w+$/) ? base : (base + '.' + exts[i]);
-            const img = new Image();
-            img.onload = function(){ resolve(cand); };
-            img.onerror = function(){ i++; tryNext(); };
-            // try project-root path
-            img.src = './' + cand;
-          }
-          tryNext();
-        }));
-      });
-
-      return Promise.all(probes).then(results=>{
-        images = results.filter(Boolean);
-        // if still empty and defaultImages provided with extensions, use them
-        if(images.length === 0 && defaultImages.length) images = defaultImages.slice();
-      }).catch(()=>{ images = defaultImages.slice(); });
-    });
-  }
-
-  // create 5 slot elements
-  let builderSlots = [null,null,null,null,null]; // each = filename or null
-  let activeSlotIndex = null;
-
-  function renderSlots(){
-    slotsContainer.innerHTML = '';
-    for(let i=0;i<5;i++){
-      const s = document.createElement('div');
-      s.className = 'slot-large';
-      s.dataset.index = i;
-      if(builderSlots[i]){
-        const img = document.createElement('img');
-        img.src = './' + builderSlots[i];
-        img.alt = builderSlots[i];
-        s.appendChild(img);
-      } else {
-        s.textContent = 'Vide';
-      }
-      const selBtn = document.createElement('button');
-      selBtn.className = 'select-btn';
-      selBtn.textContent = 'Select';
-      selBtn.addEventListener('click', (ev)=>{
-        ev.stopPropagation();
-        openSelector(i);
-      });
-      s.appendChild(selBtn);
-      s.addEventListener('click', ()=> openSelector(i));
-      slotsContainer.appendChild(s);
-    }
-  }
-
-  function renderBanks(){
-    banksRoot.innerHTML = '';
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-    if(stored.length === 0){
-      banksRoot.innerHTML = '<div style="color:#9aa">Aucune banque. Clique sur "New Bank" pour en créer une.</div>';
-      return;
-    }
-    stored.forEach((b, idx)=>{
-      const card = document.createElement('div');
-      card.className = 'bank-card';
-      const title = document.createElement('div');
-      title.className = 'bank-title';
-      title.textContent = b.name || ('Bank #' + (idx+1));
-      card.appendChild(title);
-      const row = document.createElement('div');
-      row.className = 'slot-row';
-      for(let i=0;i<5;i++){
-        const sl = document.createElement('div');
-        sl.className = 'slot';
-        if(b.slots && b.slots[i]){
-          const img = document.createElement('img');
-          img.src = './' + b.slots[i];
-          img.style.maxWidth = '100%';
-          img.style.maxHeight = '100%';
-          sl.innerHTML = '';
-          sl.appendChild(img);
-        } else {
-          sl.textContent = 'Vide';
-        }
-        row.appendChild(sl);
-      }
-      card.appendChild(row);
-      banksRoot.appendChild(card);
-    });
-  }
-
-  function openBuilder(){
-    builderSlots = [null,null,null,null,null];
-    bankNameInput.value = '';
-    activeSlotIndex = null;
-    renderSlots();
-    overlay.classList.add('open');
-    overlay.setAttribute('aria-hidden','false');
-    // load images manifest and render thumbs
-    loadImagesManifest().then(()=>{ renderThumbs(); });
-  }
-
-  function closeBuilderNow(){
-    overlay.classList.remove('open');
-    overlay.setAttribute('aria-hidden','true');
-  }
-
-  function openSelector(slotIndex){
-    activeSlotIndex = slotIndex;
-    // focus search
-    searchInput.value = '';
-    renderThumbs();
-    // scroll right panel into view (overlay visible anyway)
-  }
-
-  function renderThumbs(){
-    thumbGrid.innerHTML = '';
-    const q = (searchInput.value || '').toLowerCase().trim();
-    const list = images.filter(name => !q || name.toLowerCase().includes(q));
-    if(list.length === 0){
-      thumbGrid.innerHTML = '<div style="color:#9aa">Aucune image trouvée.</div>';
-      return;
-    }
-    list.forEach(fn=>{
-      const t = document.createElement('div');
-      t.className = 'thumb';
-      const im = document.createElement('img');
-      im.src = './' + fn;
-      im.alt = fn;
-      t.appendChild(im);
-      t.addEventListener('click', ()=>{
-        if(activeSlotIndex == null) return;
-        builderSlots[activeSlotIndex] = fn;
-        activeSlotIndex = null;
-        renderSlots();
-      });
-      thumbGrid.appendChild(t);
-    });
-  }
-
-  // validate bank: save to localStorage
-  function validateAndSave(){
-    const name = (bankNameInput.value || '').trim();
-    if(!name){
-      alert('Donne un nom à la banque.');
-      bankNameInput.focus();
-      return;
-    }
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-    stored.push({ name, slots: builderSlots.slice() });
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
-    closeBuilderNow();
-    renderBanks();
-  }
-
-  // refresh images list (re-fetch images.json)
-  refreshList.addEventListener('click', (ev)=>{
-    ev.preventDefault();
-    loadImagesManifest().then(()=> renderThumbs());
-  });
-
-  searchInput.addEventListener('input', ()=> renderThumbs());
-  btnNew.addEventListener('click', openBuilder);
-  closeBuilder.addEventListener('click', closeBuilderNow);
-  cancelBuilder.addEventListener('click', closeBuilderNow);
-  validateBank.addEventListener('click', validateAndSave);
-
-  // initialize
-  renderBanks();
-})();
-(function(){
   const grid = document.getElementById('grid');
   const weaponNameEl = document.getElementById('weaponName');
   const previewImg = document.getElementById('previewImg');
@@ -258,119 +20,6 @@
   const emeraldSection = document.getElementById('emeraldSection');
   const emeraldEnable = document.getElementById('emeraldEnable');
   const addToBankBtn = document.getElementById('addToBankBtn');
-  const viewBankBtn = document.getElementById('viewBank');
-
-  // liste simple d'exemples (texte seulement). modifie/ajoute des entrées si besoin.
-  const knives = [
-    { id: 'karambit_case_hardened', name: 'Karambit Case Hardened', basePrice: 250.00 },
-    { id: 'm9bayonet_case_hardened', name: 'M9 Bayonet Case Hardened', basePrice: 180.00 },
-    { id: 'butterfly_tiger_tooth', name: 'Butterfly Knife Tiger Tooth', basePrice: 220.00 },
-    { id: 'flip_sapphire', name: 'Flip Knife Sapphire (ex)', basePrice: 130.00 },
-    { id: 'bayonet_crimson_web', name: 'Bayonet Crimson Web', basePrice: 150.00 }
-  ];
-
-  // simple multiplier by condition
-  const conditionMultipliers = {
-    BS: 0.6,
-    FT: 0.8,
-    MW: 0.9,
-    FN: 1.0
-  };
-
-  function formatPrice(v){
-    if(v==null) return '—';
-    return '$' + Number(v).toFixed(2);
-  }
-
-  function saveItemAndOpenBank(item){
-    try{
-      const key = 'bankPageItems';
-      const raw = sessionStorage.getItem(key);
-      const arr = raw ? JSON.parse(raw) : [];
-      arr.push(item);
-      sessionStorage.setItem(key, JSON.stringify(arr));
-    }catch(e){
-      // ignore
-    }
-    // redirige vers page banque
-    window.location.href = './bank.html';
-  }
-
-  function renderGrid(){
-    if(!grid) return;
-    grid.innerHTML = '';
-    knives.forEach((k, idx) => {
-      const frame = document.createElement('div');
-      frame.className = 'frame';
-      frame.dataset.index = idx;
-
-      const name = document.createElement('div');
-      name.className = 'name';
-      name.textContent = k.name;
-      frame.appendChild(name);
-
-      const controls = document.createElement('div');
-      controls.className = 'controls';
-
-      const select = document.createElement('select');
-      ['BS','FT','MW','FN'].forEach(c => {
-        const opt = document.createElement('option');
-        opt.value = c;
-        opt.textContent = c;
-        select.appendChild(opt);
-      });
-      select.value = 'FT';
-      controls.appendChild(select);
-
-      const statLabel = document.createElement('label');
-      const statChk = document.createElement('input');
-      statChk.type = 'checkbox';
-      statChk.style.marginRight = '6px';
-      statLabel.appendChild(statChk);
-      statLabel.appendChild(document.createTextNode('StatTrak'));
-      controls.appendChild(statLabel);
-
-      frame.appendChild(controls);
-
-      const base = document.createElement('div');
-      base.textContent = 'Prix de base: ' + formatPrice(k.basePrice);
-      base.style.marginBottom = '8px';
-      frame.appendChild(base);
-
-      const addBtn = document.createElement('button');
-      addBtn.className = 'btn-add';
-      addBtn.textContent = '+';
-      addBtn.title = 'Envoyer cet item à la banque (page)';
-      addBtn.addEventListener('click', (ev)=>{
-        ev.stopPropagation();
-        const condition = select.value;
-        const stattrak = !!statChk.checked;
-        const mul = conditionMultipliers[condition] || 1;
-        let finalPrice = k.basePrice * mul;
-        if(stattrak) finalPrice *= 1.15; // exemple: +15% pour StatTrak
-        finalPrice = Math.round(finalPrice * 100) / 100;
-        const item = {
-          id: k.id,
-          name: k.name,
-          condition,
-          stattrak,
-          basePrice: k.basePrice,
-          finalPrice
-        };
-        saveItemAndOpenBank(item);
-      });
-      frame.appendChild(addBtn);
-
-      grid.appendChild(frame);
-    });
-  }
-
-  if(viewBankBtn){
-    viewBankBtn.addEventListener('click', ()=> {
-      window.location.href = './bank.html';
-    });
-  }
-
   if(blueGemRange && blueGemValue){
  
     const mappedInitial = typeof mapBlueGemSlider === 'function' ? mapBlueGemSlider(Number(blueGemRange.value)) : Number(blueGemRange.value);
@@ -441,7 +90,58 @@
     return '$' + parts.join('.');
   }
 
-  function renderGrid(count=30){ if(!grid) return; grid.innerHTML=''; for(let i=0;i<count;i++){ const frame=document.createElement('div'); frame.className='frame'; frame.dataset.index=i; const thumb=document.createElement('div'); thumb.className='thumb'; thumb.textContent='Cadre '+(i+1); const ov=document.createElement('div'); ov.className='price-overlay'; ov.textContent=''; frame.appendChild(thumb); frame.appendChild(ov); frame.addEventListener('click', ()=> onFrameClick(i, frame)); grid.appendChild(frame); } }
+  function renderGrid(count=30){
+    if(!grid) return;
+    grid.innerHTML = '';
+    for(let i=0;i<count;i++){
+      const frame = document.createElement('div');
+      frame.className = 'frame';
+      frame.dataset.index = i;
+
+      const thumb = document.createElement('div');
+      thumb.className = 'thumb';
+      thumb.textContent = 'Cadre '+(i+1);
+
+      const ov = document.createElement('div');
+      ov.className = 'price-overlay';
+      ov.textContent = '';
+
+      // green "+" add button — adds the selected knife to sessionStorage and opens bank.html
+      const addBtn = document.createElement('button');
+      addBtn.className = 'frame-add';
+      addBtn.title = 'Voir cet item dans la page banque';
+      addBtn.type = 'button';
+      addBtn.innerText = '+';
+      Object.assign(addBtn.style, {
+        position: 'absolute',
+        right: '8px',
+        top: '8px',
+        width: '34px',
+        height: '34px',
+        borderRadius: '50%',
+        background: 'linear-gradient(180deg,#2ecc71,#23b95a)',
+        color: '#fff',
+        border: '0',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontWeight: '800',
+        cursor: 'pointer',
+        zIndex: '6'
+      });
+      addBtn.addEventListener('click', (ev)=>{
+        ev.stopPropagation();
+        addFrameAndOpenPage(i);
+      });
+
+      frame.appendChild(thumb);
+      frame.appendChild(ov);
+      frame.appendChild(addBtn);
+
+      frame.addEventListener('click', ()=> onFrameClick(i, frame));
+      grid.appendChild(frame);
+    }
+  }
 
   function onFrameClick(i, el){
   document.querySelectorAll('.frame').forEach(f=>f.classList.remove('active'));
@@ -1336,3 +1036,55 @@ loadBox('Gamma 2 Case');
 updatePreview();
 
 })();
+
+// Ajoute cette fonction (place-la dans le même fichier, près des autres helpers)
+// elle prépare l'item (condition / stattrak), calcule le prix final, sauvegarde et redirige.
+function addFrameAndOpenPage(index){
+  try{
+    if(index==null || index < 0 || index >= framesData.length) return;
+    // Ensure frame data exists
+    const fd = framesData[index] || {};
+    // If the frame is the active one, prefer current UI selections
+    const chosenCondition = (activeFrameIndex === index && selectedCondition) ? selectedCondition : (fd.condition || null);
+    const chosenStattrak = (activeFrameIndex === index && stattrakCheckbox) ? !!stattrakCheckbox.checked : !!fd.stattrak;
+
+    // persist chosen selections into framesData so multiplier calculation uses them
+    framesData[index].condition = chosenCondition;
+    framesData[index].stattrak = !!chosenStattrak;
+
+    // compute final price using existing logic
+    const finalMul = (typeof computeExtendedMultiplierForFrame === 'function') ? computeExtendedMultiplierForFrame(index) : computeMultiplierForFrame(index);
+    const finalPrice = (framesData[index].basePrice != null) ? (framesData[index].basePrice * finalMul) : null;
+
+    const item = {
+      name: framesData[index].name || null,
+      img: framesData[index].img || null,
+      basePrice: framesData[index].basePrice != null ? framesData[index].basePrice : null,
+      condition: chosenCondition || null,
+      stattrak: !!chosenStattrak,
+      finalPrice: finalPrice
+    };
+
+    // save into sessionStorage array 'bankPageItems' (append)
+    try{
+      const key = 'bankPageItems';
+      const raw = sessionStorage.getItem(key);
+      const arr = raw ? JSON.parse(raw) : [];
+      arr.push(item);
+      sessionStorage.setItem(key, JSON.stringify(arr));
+    }catch(e){
+      // fallback: localStorage
+      try{
+        const key = 'bankPageItems';
+        const raw = localStorage.getItem(key);
+        const arr = raw ? JSON.parse(raw) : [];
+        arr.push(item);
+        localStorage.setItem(key, JSON.stringify(arr));
+      }catch(err){}
+    }
+
+    // redirect to bank page (user stays on site until clicking +)
+    window.location.href = './bank.html';
+  }catch(e){}
+}
+window.addFrameAndOpenPage = addFrameAndOpenPage;

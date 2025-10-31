@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Banque — Sélection</title>
+  <style>
+    body{background:#07070a;color:#e9eef3;font-family:Inter,Arial,Helvetica,sans-serif;padding:18px;}
+    .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+    .btn{background:#1f8feb;color:#fff;padding:8px 12px;border-radius:8px;border:0;cursor:pointer;font-weight:700;}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;}
+    .card{background:#0b0b0f;padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);}
+    .thumb{width:100%;height:160px;display:flex;align-items:center;justify-content:center;background:#0e0e12;border-radius:6px;overflow:hidden;margin-bottom:8px;}
+    .thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+    .meta{font-weight:700;color:#fff;margin-bottom:6px;}
+    .sub{color:#bfc9d3;font-size:13px;}
+    .empty{color:#9aa0a6;padding:40px;text-align:center;border-radius:8px;background:#0b0b0b;border:1px dashed #222;}
+  </style>
+</head>
+<body>
+  <div class="top">
+    <h2>Banque — Sélections</h2>
+    <div>
+      <button id="backBtn" class="btn">Retour</button>
+      <button id="clearBtn" class="btn" style="background:#e74c3c;margin-left:8px;">Vider</button>
+    </div>
+  </div>
+
+  <div id="content"></div>
+
+  <script>
+    function formatPriceUSD(v){
+      if(v===null||v===undefined) return '—';
+      const n = Number(v);
+      if(Number.isNaN(n)) return '—';
+      return '$' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,' ');
+    }
+
+    function tryImageResolve(base, imgEl){
+      if(!base) return;
+      const exts=['png','jpg','webp','jpeg'];
+      let i=0;
+      function next(){
+        if(i>=exts.length){ imgEl.alt = base; return; }
+        imgEl.onerror = next;
+        imgEl.onload = function(){ imgEl.onerror = null; };
+        imgEl.src = base + '.' + exts[i++];
+      }
+      next();
+    }
+
+    const key = 'bankPageItems';
+    let items = [];
+    try{ items = JSON.parse(sessionStorage.getItem(key) || '[]'); }catch(e){ try{ items = JSON.parse(localStorage.getItem(key) || '[]'); }catch(err){ items = []; } }
+    const content = document.getElementById('content');
+
+    if(!items || items.length === 0){
+      content.innerHTML = '<div class="empty">Aucun item sélectionné. Revenez sur la page principale et cliquez sur le + d\'un couteau.</div>';
+    } else {
+      const grid = document.createElement('div');
+      grid.className = 'grid';
+      items.forEach((it, idx) => {
+        const c = document.createElement('div'); c.className = 'card';
+        const th = document.createElement('div'); th.className = 'thumb';
+        if(it.img){
+          const im = new Image(); im.alt = it.name || '';
+          tryImageResolve(it.img, im);
+          th.appendChild(im);
+        } else {
+          th.textContent = it.name || '—';
+        }
+        c.appendChild(th);
+        const title = document.createElement('div'); title.className='meta'; title.textContent = it.name || '—'; c.appendChild(title);
+        const sub = document.createElement('div'); sub.className='sub';
+        sub.textContent = 'Prix : ' + formatPriceUSD(it.finalPrice != null ? it.finalPrice : it.basePrice) + (it.condition ? (' • ' + it.condition) : '') + (it.stattrak ? ' • StatTrak' : '');
+        c.appendChild(sub);
+        grid.appendChild(c);
+      });
+      content.appendChild(grid);
+    }
+
+    document.getElementById('backBtn').addEventListener('click', ()=> { window.location.href = './index.html'; });
+    document.getElementById('clearBtn').addEventListener('click', ()=>{
+      if(!confirm('Vider la sélection et retourner à l\'accueil ?')) return;
+      try{ sessionStorage.removeItem(key); localStorage.removeItem(key); }catch(e){}
+      window.location.href = './index.html';
+    });
+  </script>
+</body>
+</html>
